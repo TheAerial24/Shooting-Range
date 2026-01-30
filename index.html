@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Outdoor Precision Range</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87ceeb; font-family: 'Inter', sans-serif; touch-action: none; user-select: none; }
+        canvas { display: block; }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; color: white;
+            z-index: 80;
+        }
+
+        #crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 18px; height: 18px;
+            transform: translate(-50%, -31.25%); 
+            pointer-events: none;
+        }
+        #crosshair svg {
+            width: 100%; height: 100%;
+            fill: none;
+            stroke: #00ff96;
+            stroke-width: 1.0;
+            filter: drop-shadow(0 0 1px rgba(0,0,0,0.8));
+        }
+
+        #scope-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 25%, black 35%, black 100%);
+            display: none;
+            z-index: 70;
+            pointer-events: none;
+        }
+        
+        #scope-reticle {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 100%; height: 100%;
+            transform: translate(-50%, -50%);
+            display: none;
+            z-index: 71;
+            pointer-events: none;
+        }
+        .reticle-line-v { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: rgba(255, 0, 0, 0.5); transform: translateX(-50%); }
+        .reticle-line-h { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(255, 0, 0, 0.5); transform: translateY(-50%); }
+        .reticle-dot { position: absolute; top: 50%; left: 50%; width: 2px; height: 2px; background: red; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 4px red; }
+
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #0f172a;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; color: white; text-align: center;
+            pointer-events: auto;
+        }
+
+        .hud-card {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        #impact-hud {
+            position: absolute;
+            bottom: 20px; right: 20px;
+            width: 120px;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        #impact-hud.active { opacity: 1; }
+
+        .target-silhouette-hud {
+            width: 70px; height: 100px;
+            background: #1e293b;
+            position: relative; margin: 4px auto;
+            border-radius: 8px 8px 2px 2px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .impact-dot {
+            position: absolute;
+            width: 4px; height: 4px;
+            background: #ff4444; border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 5px #ff0000;
+        }
+
+        #weapon-info {
+            position: absolute;
+            bottom: 20px; left: 20px;
+            text-align: left;
+        }
+
+        #hit-notifier {
+            position: absolute;
+            top: 45%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 14px;
+            font-weight: 900;
+            color: #00ff96;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0,255,150,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-overlay">
+        <h1 class="text-4xl font-black mb-4 uppercase italic text-emerald-400">Precision Range</h1>
+        <p class="mb-2 opacity-80 font-bold italic">SPACEBAR TO FIRE</p>
+        <p class="mb-6 opacity-60 text-sm">Drag to Aim • Shift to Scope • R to Reload • 1-9 to Swap</p>
+        <button id="start-btn" class="px-10 py-4 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-500 shadow-lg transition-all active:scale-95">
+            START SESSION
+        </button>
+    </div>
+
+    <div id="scope-overlay"></div>
+    <div id="scope-reticle">
+        <div class="reticle-line-v"></div>
+        <div class="reticle-line-h"></div>
+        <div class="reticle-dot"></div>
+    </div>
+
+    <div id="ui-layer">
+        <div id="crosshair">
+            <svg viewBox="0 0 24 24">
+                <path d="M4 20 L12 10 L20 20" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <div id="hit-notifier">HIT</div>
+        
+        <div id="impact-hud" class="hud-card">
+            <div class="target-silhouette-hud">
+                <div id="impact-container" style="position: absolute; inset: 0;"></div>
+            </div>
+            <div class="text-[10px] font-black text-center text-emerald-400 mt-1 uppercase">Group Log</div>
+        </div>
+
+        <div id="weapon-info" class="hud-card min-w-[140px]">
+            <div id="weapon-name" class="text-sm font-black text-emerald-400 uppercase mb-1">...</div>
+            <div class="flex justify-start gap-1 items-baseline">
+                <span id="ammo-count" class="text-3xl font-black">0</span>
+                <span id="ammo-max" class="text-xs text-white/40">/ 0</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, clock;
+        let yawObject = new THREE.Object3D();
+        let pitchObject = new THREE.Object3D();
+        let gameStarted = false, isZoomed = false, isReloading = false;
+        
+        const targets = []; 
+        const weaponGroup = new THREE.Group();
+        const particles = [];
+        const physicalBullets = [];
+        let currentWeaponIndex = 1;
+        let spacePressed = false;
+        let hasFiredThisPress = false; 
+        let fireCooldown = 0;
+        
+        let lastShotTime = 0;
+        const HUD_FADE_DELAY = 4000;
+
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+
+        const weaponData = {
+            1: { name: "M4 Carbine", color: 0x2d3748, spread: 0.003, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.16, -0.3], ammo: 30, velocity: 180, auto: true },
+            2: { name: "AK-47", color: 0x3d2b1f, spread: 0.007, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.15, -0.3], ammo: 30, velocity: 160, auto: true },
+            3: { name: "Vector", color: 0x1a1a1a, spread: 0.01, zoom: 40, pos: [0.18, -0.18, -0.3], aimPos: [0, -0.14, -0.25], ammo: 25, velocity: 130, auto: true },
+            4: { name: "SPAS-12", color: 0x2d3748, spread: 0.045, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 8, velocity: 90, pellets: 8, auto: false },
+            5: { name: "Double Barrel", color: 0x5c4033, spread: 0.07, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 2, velocity: 85, pellets: 12, auto: false },
+            6: { name: "M1 Garand", color: 0x4a3728, spread: 0.001, zoom: 30, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.18, -0.45], ammo: 8, velocity: 200, auto: false },
+            7: { name: "Kar-98k", color: 0x3d2b1f, spread: 0.0005, zoom: 15, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.45, -0.2], ammo: 5, velocity: 220, scope: true, auto: false },
+            8: { name: "Barret M82", color: 0x0f172a, spread: 0.0, zoom: 10, pos: [0.25, -0.25, -0.8], aimPos: [0, -0.5, -0.2], ammo: 10, velocity: 280, scope: true, auto: false },
+            9: { name: "Anti-Tank", color: 0x111111, spread: 0.0, zoom: 5, pos: [0.3, -0.3, -1.2], aimPos: [0, -0.55, -0.2], ammo: 1, velocity: 350, scope: true, auto: false }
+        };
+
+        let currentAmmo = 30;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb); 
+            scene.fog = new THREE.Fog(0x87ceeb, 100, 2000);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 3000);
+            pitchObject.add(camera);
+            yawObject.add(pitchObject);
+            yawObject.position.set(0, 1.7, 0);
+            scene.add(yawObject);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            clock = new THREE.Clock();
+            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+            sun.position.set(100, 200, 100);
+            sun.castShadow = true;
+            scene.add(sun);
+
+            createWorld();
+            switchWeapon(1);
+            setupControls();
+            animate();
+            
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function createWorld() {
+            const grassGeo = new THREE.PlaneGeometry(10000, 10000);
+            const grassMat = new THREE.MeshStandardMaterial({ color: 0x1b4332 });
+            const grass = new THREE.Mesh(grassGeo, grassMat);
+            grass.rotation.x = -Math.PI / 2;
+            grass.receiveShadow = true;
+            scene.add(grass);
+
+            const laneGeo = new THREE.PlaneGeometry(3, 3000);
+            const laneMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f });
+            
+            for (let i = 0; i < 9; i++) {
+                const lane = new THREE.Mesh(laneGeo, laneMat);
+                lane.rotation.x = -Math.PI / 2;
+                lane.position.set((i - 4) * 6, 0.02, -1500);
+                lane.receiveShadow = true;
+                scene.add(lane);
+
+                const distance = 50 + (i * 60); 
+                spawnSteelTarget((i - 4) * 6, distance);
+            }
+        }
+
+        function spawnSteelTarget(x, z) {
+            const group = new THREE.Group();
+            const shape = new THREE.Shape();
+            shape.moveTo(-0.25, 0); shape.lineTo(0.25, 0); shape.lineTo(0.25, 0.6); 
+            shape.lineTo(0.15, 0.85); shape.lineTo(0.15, 0.95);
+            shape.lineTo(-0.15, 0.95); shape.lineTo(-0.15, 0.85); shape.lineTo(-0.25, 0.6);
+            
+            const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: false });
+            const mat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9, roughness: 0.2 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.y = 1.0;
+            mesh.castShadow = true;
+            mesh.name = "TargetPlate";
+            group.add(mesh);
+            targets.push(mesh);
+            
+            const standGeo = new THREE.BoxGeometry(0.1, 1.0, 0.1);
+            const standMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
+            const stand = new THREE.Mesh(standGeo, standMat);
+            stand.position.y = 0.5;
+            group.add(stand);
+
+            group.position.set(x, 0, -z);
+            scene.add(group);
+        }
+
+        function setupControls() {
+            const btn = document.getElementById('start-btn');
+            btn.addEventListener('click', () => {
+                gameStarted = true;
+                document.getElementById('start-overlay').style.display = 'none';
+            });
+
+            const onStart = (e) => {
+                if (!gameStarted) return;
+                isDragging = true;
+                lastMouseX = e.clientX || (e.touches ? e.touches[0].clientX : 0);
+                lastMouseY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
+            };
+            const onEnd = () => { isDragging = false; };
+            const onMove = (e) => {
+                if (!gameStarted || !isDragging) return;
+                const currentX = e.clientX || (e.touches ? e.touches[0].clientX : lastMouseX);
+                const currentY = e.clientY || (e.touches ? e.touches[0].clientY : lastMouseY);
+                const dx = currentX - lastMouseX;
+                const dy = currentY - lastMouseY;
+                const sens = isZoomed ? 0.0004 : 0.0025;
+                yawObject.rotation.y -= dx * sens;
+                pitchObject.rotation.x -= dy * sens;
+                pitchObject.rotation.x = Math.max(-1.4, Math.min(1.4, pitchObject.rotation.x));
+                lastMouseX = currentX;
+                lastMouseY = currentY;
+            };
+
+            window.addEventListener('mousedown', onStart);
+            window.addEventListener('touchstart', onStart);
+            window.addEventListener('mouseup', onEnd);
+            window.addEventListener('touchend', onEnd);
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('touchmove', onMove);
+
+            window.addEventListener('keydown', (e) => {
+                if(!gameStarted) return;
+                if(e.code === 'Space') spacePressed = true;
+                if(e.code === 'KeyR') reload();
+                if(e.shiftKey) { isZoomed = true; updateUI(); }
+                if(e.key >= '1' && e.key <= '9') switchWeapon(parseInt(e.key));
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if(e.code === 'Space') {
+                    spacePressed = false;
+                    hasFiredThisPress = false; 
+                }
+                if(!e.shiftKey) { isZoomed = false; updateUI(); }
+            });
+        }
+
+        function switchWeapon(id) {
+            currentWeaponIndex = id;
+            const d = weaponData[id];
+            currentAmmo = d.ammo;
+            isZoomed = false;
+            hasFiredThisPress = false;
+            updateUI();
+            
+            while(weaponGroup.children.length > 0) weaponGroup.remove(weaponGroup.children[0]);
+            const mat = new THREE.MeshStandardMaterial({ color: d.color, metalness: 0.8 });
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.6), mat);
+            const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5), new THREE.MeshStandardMaterial({color:0x000000}));
+            barrel.rotation.x = Math.PI/2; barrel.position.z = -0.4;
+            weaponGroup.add(body, barrel);
+            weaponGroup.position.set(...d.pos);
+            pitchObject.add(weaponGroup);
+        }
+
+        function updateUI() {
+            const data = weaponData[currentWeaponIndex];
+            document.getElementById('weapon-name').innerText = data.name;
+            document.getElementById('ammo-count').innerText = currentAmmo;
+            document.getElementById('ammo-max').innerText = `/ ${data.ammo}`;
+            const cross = document.getElementById('crosshair');
+            const scope = document.getElementById('scope-overlay');
+            const reticle = document.getElementById('scope-reticle');
+            if(isZoomed && data.scope) {
+                cross.style.display = 'none'; scope.style.display = 'block'; reticle.style.display = 'block';
+            } else {
+                cross.style.display = 'block'; scope.style.display = 'none'; reticle.style.display = 'none';
+            }
+        }
+
+        function reload() {
+            if(isReloading || currentAmmo === weaponData[currentWeaponIndex].ammo) return;
+            isReloading = true;
+            setTimeout(() => {
+                currentAmmo = weaponData[currentWeaponIndex].ammo;
+                isReloading = false;
+                updateUI();
+            }, 1000);
+        }
+
+        function createSpark(pos) {
+            for(let i=0; i<15; i++) {
+                const s = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.02), new THREE.MeshBasicMaterial({color: 0xfff333}));
+                s.position.copy(pos);
+                const vel = new THREE.Vector3((Math.random()-0.5)*0.4, Math.random()*0.4, (Math.random()-0.5)*0.4);
+                particles.push({ mesh: s, vel, life: 1.0 });
+                scene.add(s);
+            }
+        }
+
+        function fire() {
+            if(currentAmmo <= 0 || isReloading) { reload(); return; }
+            const d = weaponData[currentWeaponIndex];
+            if(!d.auto && hasFiredThisPress) return;
+            hasFiredThisPress = true;
+
+            currentAmmo--;
+            lastShotTime = Date.now();
+            updateUI();
+            
+            // --- 1. CAPTURE DATA FIRST (True to Aim) ---
+            const spawnPos = new THREE.Vector3();
+            weaponGroup.getWorldPosition(spawnPos);
+            
+            // Capture the look direction BEFORE any recoil animation occurs
+            const targetRotation = camera.getWorldQuaternion(new THREE.Quaternion());
+            
+            const pelletCount = d.pellets || 1;
+            for(let i = 0; i < pelletCount; i++) {
+                const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.04), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                bullet.position.copy(spawnPos);
+                
+                const dir = new THREE.Vector3(0, 0, -1);
+                dir.applyQuaternion(targetRotation); // Use captured pre-recoil rotation
+                
+                const spread = isZoomed ? d.spread * 0.1 : d.spread;
+                dir.x += (Math.random()-0.5) * spread;
+                dir.y += (Math.random()-0.5) * spread;
+
+                scene.add(bullet);
+                physicalBullets.push({
+                    mesh: bullet, 
+                    vel: dir.multiplyScalar(d.velocity * 0.1),
+                    gravity: 0.0008,
+                    life: 8.0,
+                    lastPos: spawnPos.clone()
+                });
+            }
+
+            // --- 2. APPLY RECOAL SECOND ---
+            weaponGroup.position.z += 0.08;
+            pitchObject.rotation.x += 0.004;
+        }
+
+        function addImpactToHUD(obj, point) {
+            const container = document.getElementById('impact-container');
+            const hud = document.getElementById('impact-hud');
+            const notifier = document.getElementById('hit-notifier');
+            hud.classList.add('active');
+            notifier.style.opacity = '1';
+            setTimeout(() => notifier.style.opacity = '0', 200);
+            
+            const dot = document.createElement('div');
+            dot.className = 'impact-dot';
+            const local = obj.worldToLocal(point.clone());
+            const xPercent = ((local.x + 0.25) / 0.5) * 100;
+            const yPercent = (1 - (local.y / 0.95)) * 100;
+            dot.style.left = `${xPercent}%`;
+            dot.style.top = `${yPercent}%`;
+            container.appendChild(dot);
+            setTimeout(() => {
+                dot.style.transition = 'opacity 1s ease';
+                dot.style.opacity = '0';
+                setTimeout(() => dot.remove(), 1000);
+            }, 3000);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            const now = Date.now();
+            
+            if (gameStarted) {
+                if (now - lastShotTime > HUD_FADE_DELAY) {
+                    document.getElementById('impact-hud').classList.remove('active');
+                }
+
+                const d = weaponData[currentWeaponIndex];
+                if(spacePressed && fireCooldown <= 0) {
+                    fire();
+                    fireCooldown = d.name === "Vector" ? 0.06 : 0.18;
+                }
+                if(fireCooldown > 0) fireCooldown -= dt;
+
+                const targetPos = isZoomed ? d.aimPos : d.pos;
+                weaponGroup.position.x += (targetPos[0] - weaponGroup.position.x) * 0.2;
+                weaponGroup.position.y += (targetPos[1] - weaponGroup.position.y) * 0.2;
+                weaponGroup.position.z += (targetPos[2] - weaponGroup.position.z) * 0.2;
+                camera.fov += ((isZoomed ? d.zoom : 60) - camera.fov) * 0.2;
+                camera.updateProjectionMatrix();
+
+                for(let i=physicalBullets.length-1; i>=0; i--) {
+                    const b = physicalBullets[i];
+                    const moveVector = b.vel.clone();
+                    const dist = moveVector.length();
+                    const direction = moveVector.normalize();
+                    const ray = new THREE.Raycaster(b.lastPos, direction, 0, dist + 0.5);
+                    const hits = ray.intersectObjects(targets);
+                    if(hits.length > 0) {
+                        createSpark(hits[0].point);
+                        addImpactToHUD(hits[0].object, hits[0].point);
+                        scene.remove(b.mesh); physicalBullets.splice(i, 1);
+                        continue;
+                    }
+                    b.lastPos.copy(b.mesh.position);
+                    b.mesh.position.add(b.vel);
+                    b.vel.y -= b.gravity;
+                    if(b.mesh.position.y < -1 || b.life <= 0) { scene.remove(b.mesh); physicalBullets.splice(i, 1); }
+                    b.life -= dt;
+                }
+
+                for(let i=particles.length-1; i>=0; i--) {
+                    const p = particles[i];
+                    p.mesh.position.add(p.vel);
+                    p.vel.y -= 0.015; p.life -= dt;
+                    p.mesh.scale.setScalar(p.life);
+                    if(p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        init();
+    </script>
+</body>
+</html>

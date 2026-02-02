@@ -7,7 +7,18 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #87ceeb; font-family: 'Inter', sans-serif; touch-action: none; user-select: none; }
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #87ceeb; 
+            font-family: 'Inter', sans-serif; 
+            touch-action: none; 
+            user-select: none; 
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            -webkit-touch-callout: none; /* Prevents long-press menu on mobile */
+        }
         canvas { display: block; }
         
         #ui-layer {
@@ -118,7 +129,7 @@
         }
     </style>
 </head>
-<body>
+<body oncontextmenu="return false;">
 
     <div id="start-overlay">
         <h1 class="text-4xl font-black mb-4 uppercase italic text-emerald-400">Precision Range</h1>
@@ -325,6 +336,9 @@
 
             const onStart = (e) => {
                 if (!gameStarted) return;
+                // Prevent browser highlight/menu behaviors
+                if (e.cancelable) e.preventDefault();
+                
                 isDragging = true;
                 lastMouseX = e.clientX || (e.touches ? e.touches[0].clientX : 0);
                 lastMouseY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
@@ -345,11 +359,11 @@
             };
 
             window.addEventListener('mousedown', onStart);
-            window.addEventListener('touchstart', onStart);
+            window.addEventListener('touchstart', onStart, { passive: false });
             window.addEventListener('mouseup', onEnd);
             window.addEventListener('touchend', onEnd);
             window.addEventListener('mousemove', onMove);
-            window.addEventListener('touchmove', onMove);
+            window.addEventListener('touchmove', onMove, { passive: false });
 
             window.addEventListener('keydown', (e) => {
                 if(!gameStarted) return;

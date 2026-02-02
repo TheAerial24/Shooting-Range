@@ -15,9 +15,6 @@
             touch-action: none; 
             user-select: none; 
             -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            -webkit-touch-callout: none; /* Prevents long-press menu on mobile */
         }
         canvas { display: block; }
         
@@ -127,6 +124,14 @@
             pointer-events: none;
             text-shadow: 0 0 10px rgba(0,255,150,0.5);
         }
+
+        #lane-hud {
+            position: absolute;
+            top: 20px; right: 20px;
+            font-weight: 900;
+            color: #00ff96;
+            text-transform: uppercase;
+        }
     </style>
 </head>
 <body oncontextmenu="return false;">
@@ -148,6 +153,11 @@
     </div>
 
     <div id="ui-layer">
+        <div id="lane-hud" class="hud-card">
+            <span class="text-xs opacity-60">Lane</span><br>
+            <span id="lane-display" class="text-xl">5</span>
+        </div>
+
         <div id="crosshair">
             <svg viewBox="0 0 24 24">
                 <path d="M4 20 L12 10 L20 20" stroke-linecap="round" stroke-linejoin="round"/>
@@ -194,7 +204,7 @@
         let lastMouseY = 0;
 
         // Lane movement state
-        let currentLane = 4; // Start in middle lane (0-8)
+        let currentLane = 4; // 0-8
         const laneSpacing = 6;
         let targetX = 0;
 
@@ -277,19 +287,14 @@
 
         function createTextTexture(text) {
             const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 128;
+            canvas.width = 256; canvas.height = 128;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
             ctx.fillRect(0, 0, 256, 128);
             ctx.font = 'bold 80px Inter, sans-serif';
             ctx.fillStyle = '#00ff96';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(text + 'm', 128, 64);
-            ctx.strokeStyle = '#00ff96';
-            ctx.lineWidth = 8;
-            ctx.strokeRect(4, 4, 248, 120);
             const texture = new THREE.CanvasTexture(canvas);
             return texture;
         }
@@ -336,9 +341,7 @@
 
             const onStart = (e) => {
                 if (!gameStarted) return;
-                // Prevent browser highlight/menu behaviors
                 if (e.cancelable) e.preventDefault();
-                
                 isDragging = true;
                 lastMouseX = e.clientX || (e.touches ? e.touches[0].clientX : 0);
                 lastMouseY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
@@ -372,22 +375,20 @@
                 if(e.shiftKey) { isZoomed = true; updateUI(); }
                 if(e.key >= '1' && e.key <= '9') switchWeapon(parseInt(e.key));
                 
-                // Lane Movement
                 if(e.code === 'KeyA') {
                     currentLane = Math.max(0, currentLane - 1);
                     targetX = (currentLane - 4) * laneSpacing;
+                    document.getElementById('lane-display').innerText = currentLane + 1;
                 }
                 if(e.code === 'KeyD') {
                     currentLane = Math.min(8, currentLane + 1);
                     targetX = (currentLane - 4) * laneSpacing;
+                    document.getElementById('lane-display').innerText = currentLane + 1;
                 }
             });
 
             window.addEventListener('keyup', (e) => {
-                if(e.code === 'Space') {
-                    spacePressed = false;
-                    hasFiredThisPress = false; 
-                }
+                if(e.code === 'Space') { spacePressed = false; hasFiredThisPress = false; }
                 if(!e.shiftKey) { isZoomed = false; updateUI(); }
             });
         }
@@ -448,11 +449,7 @@
                     new THREE.MeshBasicMaterial({ color: 0xffdd44 })
                 );
                 s.position.copy(pos);
-                const vel = new THREE.Vector3(
-                    (Math.random()-0.5) * 0.4 * caliberScale, 
-                    (Math.random()) * 0.4 * caliberScale, 
-                    (Math.random()-0.5) * 0.4 * caliberScale
-                );
+                const vel = new THREE.Vector3((Math.random()-0.5) * 0.4 * caliberScale, (Math.random()) * 0.4 * caliberScale, (Math.random()-0.5) * 0.4 * caliberScale);
                 particles.push({ mesh: s, vel, life: 0.8 + (0.4 * caliberScale) });
                 scene.add(s);
             }
@@ -460,11 +457,8 @@
             const animateLight = () => {
                 lightLife -= 0.02;
                 impactLight.intensity = Math.max(0, lightLife * 100 * caliberScale);
-                if(lightLife > 0) {
-                    requestAnimationFrame(animateLight);
-                } else {
-                    scene.remove(impactLight);
-                }
+                if(lightLife > 0) requestAnimationFrame(animateLight);
+                else scene.remove(impactLight);
             };
             animateLight();
         }
@@ -495,12 +489,7 @@
 
                 scene.add(bullet);
                 physicalBullets.push({
-                    mesh: bullet, 
-                    vel: dir.multiplyScalar(d.velocity * 0.1),
-                    gravity: 0.0008,
-                    life: 10.0,
-                    caliber: d.caliber,
-                    lastPos: spawnPos.clone()
+                    mesh: bullet, vel: dir.multiplyScalar(d.velocity * 0.1), gravity: 0.0008, life: 10.0, caliber: d.caliber, lastPos: spawnPos.clone()
                 });
             }
             weaponGroup.position.z += 0.08;
@@ -536,7 +525,6 @@
             const now = Date.now();
             
             if (gameStarted) {
-                // Smoothly transition camera X position for lane switching
                 yawObject.position.x += (targetX - yawObject.position.x) * 0.1;
 
                 if (now - lastShotTime > HUD_FADE_DELAY) {

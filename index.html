@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Outdoor Precision Range</title>
+    <title>Outdoor Precision Range - Tactical Update</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { 
             margin: 0; 
             overflow: hidden; 
-            background-color: #87ceeb; 
+            background-color: #000; 
             font-family: 'Inter', sans-serif; 
             touch-action: none; 
             user-select: none; 
@@ -28,22 +28,23 @@
         #crosshair {
             position: absolute;
             top: 50%; left: 50%;
-            width: 18px; height: 18px;
-            transform: translate(-50%, -31.25%); 
+            width: 30px; height: 30px;
+            /* Center the tip of the chevron exactly at 50/50 */
+            transform: translate(-50%, 0%); 
             pointer-events: none;
         }
         #crosshair svg {
             width: 100%; height: 100%;
             fill: none;
             stroke: #00ff96;
-            stroke-width: 1.5;
-            filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+            stroke-width: 2.5;
+            filter: drop-shadow(0 0 3px rgba(0,255,150,0.6));
         }
 
         #scope-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, transparent 25%, black 35%, black 100%);
+            background: radial-gradient(circle, transparent 25%, black 40%, black 100%);
             display: none;
             z-index: 70;
             pointer-events: none;
@@ -58,9 +59,29 @@
             z-index: 71;
             pointer-events: none;
         }
-        .reticle-line-v { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: rgba(255, 0, 0, 0.5); transform: translateX(-50%); }
-        .reticle-line-h { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(255, 0, 0, 0.5); transform: translateY(-50%); }
-        .reticle-dot { position: absolute; top: 50%; left: 50%; width: 2px; height: 2px; background: red; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 4px red; }
+        .reticle-line-v { position: absolute; top: 0; left: 50%; width: 1px; height: 100%; background: rgba(255, 0, 0, 0.7); transform: translateX(-50%); }
+        .reticle-line-h { position: absolute; top: 50%; left: 0; width: 100%; height: 1px; background: rgba(255, 0, 0, 0.7); transform: translateY(-50%); }
+        .reticle-dot { position: absolute; top: 50%; left: 50%; width: 3px; height: 3px; background: red; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 6px red; }
+
+        #nvg-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 255, 100, 0.1);
+            mix-blend-mode: screen;
+            display: none;
+            z-index: 65;
+            pointer-events: none;
+            box-shadow: inset 0 0 200px rgba(0, 50, 0, 0.8);
+        }
+        #nvg-grain {
+            position: absolute;
+            inset: 0;
+            background: url('https://grainy-gradients.vercel.app/noise.svg');
+            opacity: 0.15;
+            pointer-events: none;
+            display: none;
+            z-index: 66;
+        }
 
         #start-overlay {
             position: absolute;
@@ -77,6 +98,20 @@
             backdrop-filter: blur(12px);
             border-radius: 12px;
             padding: 12px;
+        }
+
+        #ballistics-hud {
+            position: absolute;
+            top: 20px; left: 20px;
+            color: #fff;
+            font-weight: 800;
+            font-size: 10px;
+            text-transform: uppercase;
+            pointer-events: none;
+            background: rgba(0,0,0,0.3);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border-left: 3px solid #10b981;
         }
 
         #impact-hud {
@@ -132,6 +167,9 @@
             color: #00ff96;
             text-transform: uppercase;
         }
+
+        .nvg-active #ui-layer { color: #00ff96; }
+        .nvg-active #ballistics-hud { color: #00ff96; background: rgba(0,255,0,0.1); }
     </style>
 </head>
 <body oncontextmenu="return false;">
@@ -139,12 +177,14 @@
     <div id="start-overlay">
         <h1 class="text-4xl font-black mb-4 uppercase italic text-emerald-400">Precision Range</h1>
         <p class="mb-2 opacity-80 font-bold italic">SPACEBAR TO FIRE</p>
-        <p class="mb-6 opacity-60 text-sm">Drag to Aim • A/D to Switch Lanes • Shift to Scope • R to Reload • 1-9 to Swap</p>
+        <p class="mb-6 opacity-60 text-sm">Drag to Aim • A/D to Switch Lanes • Shift to Scope • N for Night Vision • R to Reload • 1-9 to Swap</p>
         <button id="start-btn" class="px-10 py-4 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-500 shadow-lg transition-all active:scale-95">
             START SESSION
         </button>
     </div>
 
+    <div id="nvg-overlay"></div>
+    <div id="nvg-grain"></div>
     <div id="scope-overlay"></div>
     <div id="scope-reticle">
         <div class="reticle-line-v"></div>
@@ -153,6 +193,11 @@
     </div>
 
     <div id="ui-layer">
+        <div id="ballistics-hud">
+            V_MUZZLE: <span id="v-muzzle">0</span> m/s<br>
+            TIME: <span id="day-time">12:00</span>
+        </div>
+
         <div id="lane-hud" class="hud-card">
             <span class="text-xs opacity-60">Lane</span><br>
             <span id="lane-display" class="text-xl">5</span>
@@ -160,7 +205,8 @@
 
         <div id="crosshair">
             <svg viewBox="0 0 24 24">
-                <path d="M4 20 L12 10 L20 20" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- Upside down chevron: Center tip is at [12, 0] in SVG space -->
+                <path d="M4 12 L12 2 L20 12" stroke-linecap="square"/>
             </svg>
         </div>
         <div id="hit-notifier">HIT</div>
@@ -169,7 +215,7 @@
             <div class="target-silhouette-hud">
                 <div id="impact-container" style="position: absolute; inset: 0;"></div>
             </div>
-            <div class="text-[10px] font-black text-center text-emerald-400 mt-1 uppercase">Group Log</div>
+            <div class="text-[10px] font-black text-center text-emerald-400 mt-1 uppercase">Impact Log</div>
         </div>
 
         <div id="weapon-info" class="hud-card min-w-[140px]">
@@ -185,7 +231,7 @@
         let scene, camera, renderer, clock;
         let yawObject = new THREE.Object3D();
         let pitchObject = new THREE.Object3D();
-        let gameStarted = false, isZoomed = false, isReloading = false;
+        let gameStarted = false, isZoomed = false, isReloading = false, isNvg = false;
         
         const targets = []; 
         const weaponGroup = new THREE.Group();
@@ -203,21 +249,24 @@
         let lastMouseX = 0;
         let lastMouseY = 0;
 
-        // Lane movement state
-        let currentLane = 4; // 0-8
+        // Environment state - starts at 12:00 PM (0.5 cycle)
+        let currentLane = 4;
         const laneSpacing = 6;
         let targetX = 0;
+        let dayCycle = 0.5; 
+        const CYCLE_DURATION = 10 * 60; // 10 minutes for full day/night cycle
+        let sunLight, hemiLight;
 
         const weaponData = {
-            1: { name: "M4 Carbine", color: 0x2d3748, spread: 0.003, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.16, -0.3], ammo: 30, velocity: 180, auto: true, caliber: 2.2 },
-            2: { name: "AK-47", color: 0x3d2b1f, spread: 0.007, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.15, -0.3], ammo: 30, velocity: 160, auto: true, caliber: 2.4 },
-            3: { name: "Vector", color: 0x1a1a1a, spread: 0.01, zoom: 40, pos: [0.18, -0.18, -0.3], aimPos: [0, -0.14, -0.25], ammo: 25, velocity: 130, auto: true, caliber: 1.8 },
-            4: { name: "SPAS-12", color: 0x2d3748, spread: 0.045, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 8, velocity: 90, pellets: 8, auto: false, caliber: 2.0 },
-            5: { name: "Double Barrel", color: 0x5c4033, spread: 0.07, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 2, velocity: 85, pellets: 12, auto: false, caliber: 2.8 },
-            6: { name: "M1 Garand", color: 0x4a3728, spread: 0.001, zoom: 30, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.18, -0.45], ammo: 8, velocity: 200, auto: false, caliber: 2.6 },
-            7: { name: "Kar-98k", color: 0x3d2b1f, spread: 0.0005, zoom: 15, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.45, -0.2], ammo: 5, velocity: 220, scope: true, auto: false, caliber: 3.2 },
-            8: { name: "Barret M82", color: 0x0f172a, spread: 0.0, zoom: 10, pos: [0.25, -0.25, -0.8], aimPos: [0, -0.5, -0.2], ammo: 10, velocity: 280, scope: true, auto: false, caliber: 4.8 },
-            9: { name: "Anti-Tank", color: 0x111111, spread: 0.0, zoom: 5, pos: [0.3, -0.3, -1.2], aimPos: [0, -0.55, -0.2], ammo: 1, velocity: 350, scope: true, auto: false, caliber: 10.0 }
+            1: { name: "M4 Carbine", color: 0x2d3748, spread: 0.002, zoom: 35, pos: [0.22, -0.25, -0.4], aimPos: [0, -0.22, -0.3], ammo: 30, velocity: 880, auto: true, caliber: 2.2 },
+            2: { name: "AK-47", color: 0x3d2b1f, spread: 0.005, zoom: 35, pos: [0.22, -0.25, -0.4], aimPos: [0, -0.22, -0.3], ammo: 30, velocity: 715, auto: true, caliber: 2.4 },
+            3: { name: "Vector", color: 0x1a1a1a, spread: 0.008, zoom: 40, pos: [0.18, -0.2, -0.3], aimPos: [0, -0.18, -0.25], ammo: 25, velocity: 380, auto: true, caliber: 1.8 },
+            4: { name: "SPAS-12", color: 0x2d3748, spread: 0.035, zoom: 45, pos: [0.22, -0.25, -0.5], aimPos: [0, -0.24, -0.35], ammo: 8, velocity: 400, pellets: 8, auto: false, caliber: 2.0 },
+            5: { name: "Double Barrel", color: 0x5c4033, spread: 0.05, zoom: 45, pos: [0.22, -0.25, -0.5], aimPos: [0, -0.24, -0.35], ammo: 2, velocity: 360, pellets: 12, auto: false, caliber: 2.8 },
+            6: { name: "M1 Garand", color: 0x4a3728, spread: 0.001, zoom: 30, pos: [0.22, -0.25, -0.6], aimPos: [0, -0.24, -0.45], ammo: 8, velocity: 853, auto: false, caliber: 2.6 },
+            7: { name: "Kar-98k", color: 0x3d2b1f, spread: 0.0004, zoom: 15, pos: [0.22, -0.25, -0.6], aimPos: [0, -0.48, -0.2], ammo: 5, velocity: 760, scope: true, auto: false, caliber: 3.2 },
+            8: { name: "Barret M82", color: 0x0f172a, spread: 0.0001, zoom: 8, pos: [0.25, -0.28, -0.8], aimPos: [0, -0.52, -0.2], ammo: 10, velocity: 853, scope: true, auto: false, caliber: 4.8 },
+            9: { name: "Anti-Tank", color: 0x111111, spread: 0.0, zoom: 5, pos: [0.3, -0.35, -1.2], aimPos: [0, -0.58, -0.2], ammo: 1, velocity: 1100, scope: true, auto: false, caliber: 10.0 }
         };
 
         let currentAmmo = 30;
@@ -240,11 +289,18 @@
             document.body.appendChild(renderer.domElement);
 
             clock = new THREE.Clock();
-            scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-            sun.position.set(100, 200, 100);
-            sun.castShadow = true;
-            scene.add(sun);
+            
+            hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+            scene.add(hemiLight);
+
+            sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            sunLight.position.set(100, 200, 100);
+            sunLight.castShadow = true;
+            sunLight.shadow.camera.left = -100;
+            sunLight.shadow.camera.right = 100;
+            sunLight.shadow.camera.top = 100;
+            sunLight.shadow.camera.bottom = -100;
+            scene.add(sunLight);
 
             createWorld();
             switchWeapon(1);
@@ -261,6 +317,7 @@
         }
 
         function createWorld() {
+            // Ground
             const grassGeo = new THREE.PlaneGeometry(10000, 10000);
             const grassMat = new THREE.MeshStandardMaterial({ color: 0x1b4332 });
             const grass = new THREE.Mesh(grassGeo, grassMat);
@@ -268,8 +325,9 @@
             grass.receiveShadow = true;
             scene.add(grass);
 
+            // Lanes
             const laneGeo = new THREE.PlaneGeometry(3, 5000);
-            const laneMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f });
+            const laneMat = new THREE.MeshStandardMaterial({ color: 0x2d1b0f });
             
             const engagingDistances = [50, 75, 100, 150, 200, 250, 350, 500, 750];
 
@@ -289,14 +347,13 @@
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 128;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
             ctx.fillRect(0, 0, 256, 128);
             ctx.font = 'bold 80px Inter, sans-serif';
             ctx.fillStyle = '#00ff96';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(text + 'm', 128, 64);
-            const texture = new THREE.CanvasTexture(canvas);
-            return texture;
+            return new THREE.CanvasTexture(canvas);
         }
 
         function spawnSteelTarget(x, z) {
@@ -307,7 +364,13 @@
             shape.lineTo(-0.15, 0.95); shape.lineTo(-0.15, 0.85); shape.lineTo(-0.25, 0.6);
             
             const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: false });
-            const mat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9, roughness: 0.2 });
+            const mat = new THREE.MeshStandardMaterial({ 
+                color: 0x475569, 
+                metalness: 0.8, 
+                roughness: 0.4,
+                emissive: 0x00ff00,
+                emissiveIntensity: 0
+            });
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.y = 1.0;
             mesh.castShadow = true;
@@ -333,32 +396,39 @@
         }
 
         function setupControls() {
-            const btn = document.getElementById('start-btn');
-            btn.addEventListener('click', () => {
+            document.getElementById('start-btn').addEventListener('click', () => {
                 gameStarted = true;
                 document.getElementById('start-overlay').style.display = 'none';
+                document.body.requestPointerLock?.();
             });
 
             const onStart = (e) => {
                 if (!gameStarted) return;
-                if (e.cancelable) e.preventDefault();
                 isDragging = true;
                 lastMouseX = e.clientX || (e.touches ? e.touches[0].clientX : 0);
                 lastMouseY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
             };
             const onEnd = () => { isDragging = false; };
             const onMove = (e) => {
-                if (!gameStarted || !isDragging) return;
-                const currentX = e.clientX || (e.touches ? e.touches[0].clientX : lastMouseX);
-                const currentY = e.clientY || (e.touches ? e.touches[0].clientY : lastMouseY);
-                const dx = currentX - lastMouseX;
-                const dy = currentY - lastMouseY;
-                const sens = isZoomed ? 0.0004 : 0.0025;
+                if (!gameStarted) return;
+                
+                let dx, dy;
+                if (document.pointerLockElement) {
+                    dx = e.movementX || 0;
+                    dy = e.movementY || 0;
+                } else if (isDragging) {
+                    const cx = e.clientX || (e.touches ? e.touches[0].clientX : lastMouseX);
+                    const cy = e.clientY || (e.touches ? e.touches[0].clientY : lastMouseY);
+                    dx = cx - lastMouseX;
+                    dy = cy - lastMouseY;
+                    lastMouseX = cx;
+                    lastMouseY = cy;
+                } else return;
+
+                const sens = isZoomed ? 0.0004 : 0.002;
                 yawObject.rotation.y -= dx * sens;
                 pitchObject.rotation.x -= dy * sens;
                 pitchObject.rotation.x = Math.max(-1.4, Math.min(1.4, pitchObject.rotation.x));
-                lastMouseX = currentX;
-                lastMouseY = currentY;
             };
 
             window.addEventListener('mousedown', onStart);
@@ -372,6 +442,7 @@
                 if(!gameStarted) return;
                 if(e.code === 'Space') spacePressed = true;
                 if(e.code === 'KeyR') reload();
+                if(e.code === 'KeyN') toggleNvg();
                 if(e.shiftKey) { isZoomed = true; updateUI(); }
                 if(e.key >= '1' && e.key <= '9') switchWeapon(parseInt(e.key));
                 
@@ -393,6 +464,17 @@
             });
         }
 
+        function toggleNvg() {
+            isNvg = !isNvg;
+            document.getElementById('nvg-overlay').style.display = isNvg ? 'block' : 'none';
+            document.getElementById('nvg-grain').style.display = isNvg ? 'block' : 'none';
+            document.body.classList.toggle('nvg-active', isNvg);
+            
+            targets.forEach(t => {
+                t.material.emissiveIntensity = isNvg ? 1.0 : 0;
+            });
+        }
+
         function switchWeapon(id) {
             currentWeaponIndex = id;
             const d = weaponData[id];
@@ -409,6 +491,8 @@
             weaponGroup.add(body, barrel);
             weaponGroup.position.set(...d.pos);
             pitchObject.add(weaponGroup);
+            
+            document.getElementById('v-muzzle').innerText = d.velocity;
         }
 
         function updateUI() {
@@ -416,9 +500,11 @@
             document.getElementById('weapon-name').innerText = data.name;
             document.getElementById('ammo-count').innerText = currentAmmo;
             document.getElementById('ammo-max').innerText = `/ ${data.ammo}`;
+            
             const cross = document.getElementById('crosshair');
             const scope = document.getElementById('scope-overlay');
             const reticle = document.getElementById('scope-reticle');
+            
             if(isZoomed && data.scope) {
                 cross.style.display = 'none'; scope.style.display = 'block'; reticle.style.display = 'block';
             } else {
@@ -437,26 +523,31 @@
         }
 
         function createSpark(pos, caliberScale = 1.0) {
-            const impactLight = new THREE.PointLight(0xffaa00, 6 * caliberScale, 4 * caliberScale);
+            const color = isNvg ? 0x00ff00 : 0xffaa00;
+            const impactLight = new THREE.PointLight(color, 8 * caliberScale, 6 * caliberScale);
             impactLight.position.copy(pos).add(new THREE.Vector3(0, 0, 0.1));
             scene.add(impactLight);
             
-            let lightLife = 0.15;
-            const count = Math.min(120, 30 + (15 * caliberScale));
+            let lightLife = 0.2;
+            const count = Math.min(100, 25 + (15 * caliberScale));
             for(let i=0; i < count; i++) {
                 const s = new THREE.Mesh(
                     new THREE.BoxGeometry(0.02 * caliberScale, 0.02 * caliberScale, 0.02 * caliberScale),
-                    new THREE.MeshBasicMaterial({ color: 0xffdd44 })
+                    new THREE.MeshBasicMaterial({ color: color })
                 );
                 s.position.copy(pos);
-                const vel = new THREE.Vector3((Math.random()-0.5) * 0.4 * caliberScale, (Math.random()) * 0.4 * caliberScale, (Math.random()-0.5) * 0.4 * caliberScale);
-                particles.push({ mesh: s, vel, life: 0.8 + (0.4 * caliberScale) });
+                const vel = new THREE.Vector3(
+                    (Math.random()-0.5) * 0.5 * caliberScale, 
+                    (Math.random()) * 0.5 * caliberScale, 
+                    (Math.random()-0.5) * 0.5 * caliberScale
+                );
+                particles.push({ mesh: s, vel, life: 0.6 + (0.4 * caliberScale) });
                 scene.add(s);
             }
 
             const animateLight = () => {
                 lightLife -= 0.02;
-                impactLight.intensity = Math.max(0, lightLife * 100 * caliberScale);
+                impactLight.intensity = Math.max(0, lightLife * 120 * caliberScale);
                 if(lightLife > 0) requestAnimationFrame(animateLight);
                 else scene.remove(impactLight);
             };
@@ -475,25 +566,32 @@
             
             const spawnPos = new THREE.Vector3();
             weaponGroup.getWorldPosition(spawnPos);
-            const targetRotation = camera.getWorldQuaternion(new THREE.Quaternion());
             
+            const cameraDir = new THREE.Vector3(0, 0, -1);
+            cameraDir.applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()));
+
             const pelletCount = d.pellets || 1;
             for(let i = 0; i < pelletCount; i++) {
-                const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.02), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.8}));
+                const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.025), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.9}));
                 bullet.position.copy(spawnPos);
-                const dir = new THREE.Vector3(0, 0, -1);
-                dir.applyQuaternion(targetRotation);
-                const spread = isZoomed ? d.spread * 0.1 : d.spread;
+                
+                const dir = cameraDir.clone();
+                const spread = isZoomed ? d.spread * 0.05 : d.spread;
                 dir.x += (Math.random()-0.5) * spread;
                 dir.y += (Math.random()-0.5) * spread;
 
                 scene.add(bullet);
                 physicalBullets.push({
-                    mesh: bullet, vel: dir.multiplyScalar(d.velocity * 0.1), gravity: 0.0008, life: 10.0, caliber: d.caliber, lastPos: spawnPos.clone()
+                    mesh: bullet, 
+                    vel: dir.multiplyScalar(d.velocity * 0.02),
+                    gravity: 0.0005, 
+                    life: 12.0, 
+                    caliber: d.caliber, 
+                    lastPos: spawnPos.clone()
                 });
             }
             weaponGroup.position.z += 0.08;
-            pitchObject.rotation.x += 0.004;
+            pitchObject.rotation.x += 0.003;
         }
 
         function addImpactToHUD(obj, point) {
@@ -519,13 +617,44 @@
             }, 3000);
         }
 
+        function updateEnvironment(dt) {
+            dayCycle += dt / CYCLE_DURATION;
+            if (dayCycle > 1) dayCycle -= 1;
+
+            const sunAngle = dayCycle * Math.PI * 2 - Math.PI / 2;
+            const sunY = Math.sin(sunAngle);
+            const sunX = Math.cos(sunAngle);
+
+            sunLight.position.set(sunX * 200, sunY * 200, 100);
+            sunLight.intensity = Math.max(0, sunY * 1.5);
+            
+            const dayColor = new THREE.Color(0x87ceeb);
+            const nightColor = new THREE.Color(0x020617);
+            const sunsetColor = new THREE.Color(0xf97316);
+            
+            let skyColor;
+            if (sunY > 0.2) skyColor = dayColor;
+            else if (sunY > -0.2) skyColor = sunsetColor.clone().lerp(nightColor, Math.abs(sunY - 0.2) / 0.4);
+            else skyColor = nightColor;
+
+            scene.background = skyColor;
+            scene.fog.color = skyColor;
+            hemiLight.intensity = Math.max(0.05, sunY * 0.6);
+
+            const hours = Math.floor(dayCycle * 24);
+            const mins = Math.floor((dayCycle * 24 % 1) * 60);
+            document.getElementById('day-time').innerText = `${hours.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}`;
+        }
+
         function animate() {
             requestAnimationFrame(animate);
             const dt = clock.getDelta();
             const now = Date.now();
             
             if (gameStarted) {
-                yawObject.position.x += (targetX - yawObject.position.x) * 0.1;
+                updateEnvironment(dt);
+
+                yawObject.position.x += (targetX - yawObject.position.x) * 0.15;
 
                 if (now - lastShotTime > HUD_FADE_DELAY) {
                     document.getElementById('impact-hud').classList.remove('active');
@@ -534,15 +663,16 @@
                 const d = weaponData[currentWeaponIndex];
                 if(spacePressed && fireCooldown <= 0) {
                     fire();
-                    fireCooldown = d.name === "Vector" ? 0.06 : 0.18;
+                    fireCooldown = d.name === "Vector" ? 0.05 : 0.2;
                 }
                 if(fireCooldown > 0) fireCooldown -= dt;
 
                 const targetPos = isZoomed ? d.aimPos : d.pos;
-                weaponGroup.position.x += (targetPos[0] - weaponGroup.position.x) * 0.2;
-                weaponGroup.position.y += (targetPos[1] - weaponGroup.position.y) * 0.2;
-                weaponGroup.position.z += (targetPos[2] - weaponGroup.position.z) * 0.2;
-                camera.fov += ((isZoomed ? d.zoom : 60) - camera.fov) * 0.2;
+                weaponGroup.position.x += (targetPos[0] - weaponGroup.position.x) * 0.25;
+                weaponGroup.position.y += (targetPos[1] - weaponGroup.position.y) * 0.25;
+                weaponGroup.position.z += (targetPos[2] - weaponGroup.position.z) * 0.25;
+                
+                camera.fov += ((isZoomed ? d.zoom : 60) - camera.fov) * 0.25;
                 camera.updateProjectionMatrix();
 
                 for(let i=physicalBullets.length-1; i>=0; i--) {
@@ -550,7 +680,8 @@
                     const moveVector = b.vel.clone();
                     const dist = moveVector.length();
                     const direction = moveVector.normalize();
-                    const ray = new THREE.Raycaster(b.lastPos, direction, 0, dist + 0.5);
+                    
+                    const ray = new THREE.Raycaster(b.lastPos, direction, 0, dist + 0.1);
                     const hits = ray.intersectObjects(targets);
                     if(hits.length > 0) {
                         createSpark(hits[0].point, b.caliber);
@@ -561,14 +692,18 @@
                     b.lastPos.copy(b.mesh.position);
                     b.mesh.position.add(b.vel);
                     b.vel.y -= b.gravity;
-                    if(b.mesh.position.y < -1 || b.life <= 0) { scene.remove(b.mesh); physicalBullets.splice(i, 1); }
+                    
+                    if(b.mesh.position.y < -1 || b.life <= 0) { 
+                        scene.remove(b.mesh); 
+                        physicalBullets.splice(i, 1); 
+                    }
                     b.life -= dt;
                 }
 
                 for(let i=particles.length-1; i>=0; i--) {
                     const p = particles[i];
                     p.mesh.position.add(p.vel);
-                    p.vel.y -= 0.008; p.life -= dt;
+                    p.vel.y -= 0.01; p.life -= dt;
                     p.mesh.scale.setScalar(p.life);
                     if(p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
                 }

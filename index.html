@@ -25,13 +25,14 @@
             z-index: 80;
         }
 
-        #crosshair {
-            position: absolute;
-            top: 50%; left: 50%;
-            width: 30px; height: 30px;
-            /* Center the tip of the chevron exactly at 50/50 */
-            transform: translate(-50%, 0%); 
-            pointer-events: none;
+#crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 30px; height: 30px;
+    /* Shift so the SVG chevron tip (y=2 in 24x24 viewBox) points at the screen center */
+    transform: translate(-50%, calc(-50% + 12.5px));
+    pointer-events: none;
+}
         }
         #crosshair svg {
             width: 50%; height: 100%;

@@ -28,8 +28,8 @@
             width: 100%; height: 100%;
             fill: none;
             stroke: #00ff96;
-            stroke-width: 1.0;
-            filter: drop-shadow(0 0 1px rgba(0,0,0,0.8));
+            stroke-width: 1.5;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
         }
 
         #scope-overlay {
@@ -123,7 +123,7 @@
     <div id="start-overlay">
         <h1 class="text-4xl font-black mb-4 uppercase italic text-emerald-400">Precision Range</h1>
         <p class="mb-2 opacity-80 font-bold italic">SPACEBAR TO FIRE</p>
-        <p class="mb-6 opacity-60 text-sm">Drag to Aim • Shift to Scope • R to Reload • 1-9 to Swap</p>
+        <p class="mb-6 opacity-60 text-sm">Drag to Aim • A/D to Switch Lanes • Shift to Scope • R to Reload • 1-9 to Swap</p>
         <button id="start-btn" class="px-10 py-4 bg-emerald-600 text-white font-bold rounded-full hover:bg-emerald-500 shadow-lg transition-all active:scale-95">
             START SESSION
         </button>
@@ -182,16 +182,21 @@
         let lastMouseX = 0;
         let lastMouseY = 0;
 
+        // Lane movement state
+        let currentLane = 4; // Start in middle lane (0-8)
+        const laneSpacing = 6;
+        let targetX = 0;
+
         const weaponData = {
-            1: { name: "M4 Carbine", color: 0x2d3748, spread: 0.003, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.16, -0.3], ammo: 30, velocity: 180, auto: true },
-            2: { name: "AK-47", color: 0x3d2b1f, spread: 0.007, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.15, -0.3], ammo: 30, velocity: 160, auto: true },
-            3: { name: "Vector", color: 0x1a1a1a, spread: 0.01, zoom: 40, pos: [0.18, -0.18, -0.3], aimPos: [0, -0.14, -0.25], ammo: 25, velocity: 130, auto: true },
-            4: { name: "SPAS-12", color: 0x2d3748, spread: 0.045, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 8, velocity: 90, pellets: 8, auto: false },
-            5: { name: "Double Barrel", color: 0x5c4033, spread: 0.07, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 2, velocity: 85, pellets: 12, auto: false },
-            6: { name: "M1 Garand", color: 0x4a3728, spread: 0.001, zoom: 30, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.18, -0.45], ammo: 8, velocity: 200, auto: false },
-            7: { name: "Kar-98k", color: 0x3d2b1f, spread: 0.0005, zoom: 15, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.45, -0.2], ammo: 5, velocity: 220, scope: true, auto: false },
-            8: { name: "Barret M82", color: 0x0f172a, spread: 0.0, zoom: 10, pos: [0.25, -0.25, -0.8], aimPos: [0, -0.5, -0.2], ammo: 10, velocity: 280, scope: true, auto: false },
-            9: { name: "Anti-Tank", color: 0x111111, spread: 0.0, zoom: 5, pos: [0.3, -0.3, -1.2], aimPos: [0, -0.55, -0.2], ammo: 1, velocity: 350, scope: true, auto: false }
+            1: { name: "M4 Carbine", color: 0x2d3748, spread: 0.003, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.16, -0.3], ammo: 30, velocity: 180, auto: true, caliber: 2.2 },
+            2: { name: "AK-47", color: 0x3d2b1f, spread: 0.007, zoom: 35, pos: [0.22, -0.22, -0.4], aimPos: [0, -0.15, -0.3], ammo: 30, velocity: 160, auto: true, caliber: 2.4 },
+            3: { name: "Vector", color: 0x1a1a1a, spread: 0.01, zoom: 40, pos: [0.18, -0.18, -0.3], aimPos: [0, -0.14, -0.25], ammo: 25, velocity: 130, auto: true, caliber: 1.8 },
+            4: { name: "SPAS-12", color: 0x2d3748, spread: 0.045, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 8, velocity: 90, pellets: 8, auto: false, caliber: 2.0 },
+            5: { name: "Double Barrel", color: 0x5c4033, spread: 0.07, zoom: 45, pos: [0.22, -0.22, -0.5], aimPos: [0, -0.18, -0.35], ammo: 2, velocity: 85, pellets: 12, auto: false, caliber: 2.8 },
+            6: { name: "M1 Garand", color: 0x4a3728, spread: 0.001, zoom: 30, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.18, -0.45], ammo: 8, velocity: 200, auto: false, caliber: 2.6 },
+            7: { name: "Kar-98k", color: 0x3d2b1f, spread: 0.0005, zoom: 15, pos: [0.22, -0.22, -0.6], aimPos: [0, -0.45, -0.2], ammo: 5, velocity: 220, scope: true, auto: false, caliber: 3.2 },
+            8: { name: "Barret M82", color: 0x0f172a, spread: 0.0, zoom: 10, pos: [0.25, -0.25, -0.8], aimPos: [0, -0.5, -0.2], ammo: 10, velocity: 280, scope: true, auto: false, caliber: 4.8 },
+            9: { name: "Anti-Tank", color: 0x111111, spread: 0.0, zoom: 5, pos: [0.3, -0.3, -1.2], aimPos: [0, -0.55, -0.2], ammo: 1, velocity: 350, scope: true, auto: false, caliber: 10.0 }
         };
 
         let currentAmmo = 30;
@@ -199,9 +204,9 @@
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87ceeb); 
-            scene.fog = new THREE.Fog(0x87ceeb, 100, 2000);
+            scene.fog = new THREE.Fog(0x87ceeb, 100, 1500);
 
-            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 3000);
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 5000);
             pitchObject.add(camera);
             yawObject.add(pitchObject);
             yawObject.position.set(0, 1.7, 0);
@@ -242,19 +247,40 @@
             grass.receiveShadow = true;
             scene.add(grass);
 
-            const laneGeo = new THREE.PlaneGeometry(3, 3000);
+            const laneGeo = new THREE.PlaneGeometry(3, 5000);
             const laneMat = new THREE.MeshStandardMaterial({ color: 0x3d2b1f });
             
+            const engagingDistances = [50, 75, 100, 150, 200, 250, 350, 500, 750];
+
             for (let i = 0; i < 9; i++) {
                 const lane = new THREE.Mesh(laneGeo, laneMat);
                 lane.rotation.x = -Math.PI / 2;
-                lane.position.set((i - 4) * 6, 0.02, -1500);
+                lane.position.set((i - 4) * laneSpacing, 0.02, -2500);
                 lane.receiveShadow = true;
                 scene.add(lane);
 
-                const distance = 50 + (i * 60); 
-                spawnSteelTarget((i - 4) * 6, distance);
+                const distance = engagingDistances[i];
+                spawnSteelTarget((i - 4) * laneSpacing, distance);
             }
+        }
+
+        function createTextTexture(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, 256, 128);
+            ctx.font = 'bold 80px Inter, sans-serif';
+            ctx.fillStyle = '#00ff96';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text + 'm', 128, 64);
+            ctx.strokeStyle = '#00ff96';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(4, 4, 248, 120);
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
         }
 
         function spawnSteelTarget(x, z) {
@@ -278,6 +304,13 @@
             const stand = new THREE.Mesh(standGeo, standMat);
             stand.position.y = 0.5;
             group.add(stand);
+
+            const textTex = createTextTexture(z.toString());
+            const markerPlaneGeo = new THREE.PlaneGeometry(1.2, 0.6);
+            const markerPlaneMat = new THREE.MeshBasicMaterial({ map: textTex, transparent: true, side: THREE.DoubleSide });
+            const markerPlane = new THREE.Mesh(markerPlaneGeo, markerPlaneMat);
+            markerPlane.position.set(0, 0.4, 0.2);
+            group.add(markerPlane);
 
             group.position.set(x, 0, -z);
             scene.add(group);
@@ -324,6 +357,16 @@
                 if(e.code === 'KeyR') reload();
                 if(e.shiftKey) { isZoomed = true; updateUI(); }
                 if(e.key >= '1' && e.key <= '9') switchWeapon(parseInt(e.key));
+                
+                // Lane Movement
+                if(e.code === 'KeyA') {
+                    currentLane = Math.max(0, currentLane - 1);
+                    targetX = (currentLane - 4) * laneSpacing;
+                }
+                if(e.code === 'KeyD') {
+                    currentLane = Math.min(8, currentLane + 1);
+                    targetX = (currentLane - 4) * laneSpacing;
+                }
             });
 
             window.addEventListener('keyup', (e) => {
@@ -378,14 +421,38 @@
             }, 1000);
         }
 
-        function createSpark(pos) {
-            for(let i=0; i<15; i++) {
-                const s = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 0.02), new THREE.MeshBasicMaterial({color: 0xfff333}));
+        function createSpark(pos, caliberScale = 1.0) {
+            const impactLight = new THREE.PointLight(0xffaa00, 6 * caliberScale, 4 * caliberScale);
+            impactLight.position.copy(pos).add(new THREE.Vector3(0, 0, 0.1));
+            scene.add(impactLight);
+            
+            let lightLife = 0.15;
+            const count = Math.min(120, 30 + (15 * caliberScale));
+            for(let i=0; i < count; i++) {
+                const s = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.02 * caliberScale, 0.02 * caliberScale, 0.02 * caliberScale),
+                    new THREE.MeshBasicMaterial({ color: 0xffdd44 })
+                );
                 s.position.copy(pos);
-                const vel = new THREE.Vector3((Math.random()-0.5)*0.4, Math.random()*0.4, (Math.random()-0.5)*0.4);
-                particles.push({ mesh: s, vel, life: 1.0 });
+                const vel = new THREE.Vector3(
+                    (Math.random()-0.5) * 0.4 * caliberScale, 
+                    (Math.random()) * 0.4 * caliberScale, 
+                    (Math.random()-0.5) * 0.4 * caliberScale
+                );
+                particles.push({ mesh: s, vel, life: 0.8 + (0.4 * caliberScale) });
                 scene.add(s);
             }
+
+            const animateLight = () => {
+                lightLife -= 0.02;
+                impactLight.intensity = Math.max(0, lightLife * 100 * caliberScale);
+                if(lightLife > 0) {
+                    requestAnimationFrame(animateLight);
+                } else {
+                    scene.remove(impactLight);
+                }
+            };
+            animateLight();
         }
 
         function fire() {
@@ -398,21 +465,16 @@
             lastShotTime = Date.now();
             updateUI();
             
-            // --- 1. CAPTURE DATA FIRST (True to Aim) ---
             const spawnPos = new THREE.Vector3();
             weaponGroup.getWorldPosition(spawnPos);
-            
-            // Capture the look direction BEFORE any recoil animation occurs
             const targetRotation = camera.getWorldQuaternion(new THREE.Quaternion());
             
             const pelletCount = d.pellets || 1;
             for(let i = 0; i < pelletCount; i++) {
-                const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.04), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.02), new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.8}));
                 bullet.position.copy(spawnPos);
-                
                 const dir = new THREE.Vector3(0, 0, -1);
-                dir.applyQuaternion(targetRotation); // Use captured pre-recoil rotation
-                
+                dir.applyQuaternion(targetRotation);
                 const spread = isZoomed ? d.spread * 0.1 : d.spread;
                 dir.x += (Math.random()-0.5) * spread;
                 dir.y += (Math.random()-0.5) * spread;
@@ -422,12 +484,11 @@
                     mesh: bullet, 
                     vel: dir.multiplyScalar(d.velocity * 0.1),
                     gravity: 0.0008,
-                    life: 8.0,
+                    life: 10.0,
+                    caliber: d.caliber,
                     lastPos: spawnPos.clone()
                 });
             }
-
-            // --- 2. APPLY RECOAL SECOND ---
             weaponGroup.position.z += 0.08;
             pitchObject.rotation.x += 0.004;
         }
@@ -461,6 +522,9 @@
             const now = Date.now();
             
             if (gameStarted) {
+                // Smoothly transition camera X position for lane switching
+                yawObject.position.x += (targetX - yawObject.position.x) * 0.1;
+
                 if (now - lastShotTime > HUD_FADE_DELAY) {
                     document.getElementById('impact-hud').classList.remove('active');
                 }
@@ -487,7 +551,7 @@
                     const ray = new THREE.Raycaster(b.lastPos, direction, 0, dist + 0.5);
                     const hits = ray.intersectObjects(targets);
                     if(hits.length > 0) {
-                        createSpark(hits[0].point);
+                        createSpark(hits[0].point, b.caliber);
                         addImpactToHUD(hits[0].object, hits[0].point);
                         scene.remove(b.mesh); physicalBullets.splice(i, 1);
                         continue;
@@ -502,7 +566,7 @@
                 for(let i=particles.length-1; i>=0; i--) {
                     const p = particles[i];
                     p.mesh.position.add(p.vel);
-                    p.vel.y -= 0.015; p.life -= dt;
+                    p.vel.y -= 0.008; p.life -= dt;
                     p.mesh.scale.setScalar(p.life);
                     if(p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
                 }

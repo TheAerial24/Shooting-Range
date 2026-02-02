@@ -25,15 +25,14 @@
             z-index: 80;
         }
 
-#crosshair {
-    position: absolute;
-    top: 50%; left: 50%;
-    width: 30px; height: 30px;
-    /* Shift so the SVG chevron tip (y=2 in 24x24 viewBox) points at the screen center */
-    transform: translate(-50%, calc(-50% + 12.5px));
-    pointer-events: none;
-}
+        #crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 30px; height: 30px;
+            transform: translate(-50%, -2.5px);
+            pointer-events: none;
         }
+        
         #crosshair svg {
             width: 100%; height: 100%;
             fill: none;
@@ -206,8 +205,7 @@
 
         <div id="crosshair">
             <svg viewBox="0 0 24 24">
-                <!-- Upside down chevron: Center tip is at [12, 0] in SVG space -->
-                <path d="M4 12 L12 2 L20 12" stroke-linecap="square"/>
+                <path d="M4 12 L12 2 L20 12" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
         </div>
         <div id="hit-notifier">HIT</div>
@@ -250,12 +248,11 @@
         let lastMouseX = 0;
         let lastMouseY = 0;
 
-        // Environment state - starts at 12:00 PM (0.5 cycle)
         let currentLane = 4;
         const laneSpacing = 6;
         let targetX = 0;
         let dayCycle = 0.5; 
-        const CYCLE_DURATION = 10 * 60; // 10 minutes for full day/night cycle
+        const CYCLE_DURATION = 10 * 60; // 10 minutes per cycle
         let sunLight, hemiLight;
 
         const weaponData = {
@@ -318,7 +315,6 @@
         }
 
         function createWorld() {
-            // Ground
             const grassGeo = new THREE.PlaneGeometry(10000, 10000);
             const grassMat = new THREE.MeshStandardMaterial({ color: 0x1b4332 });
             const grass = new THREE.Mesh(grassGeo, grassMat);
@@ -326,7 +322,6 @@
             grass.receiveShadow = true;
             scene.add(grass);
 
-            // Lanes
             const laneGeo = new THREE.PlaneGeometry(3, 5000);
             const laneMat = new THREE.MeshStandardMaterial({ color: 0x2d1b0f });
             
@@ -634,13 +629,30 @@
             const sunsetColor = new THREE.Color(0xf97316);
             
             let skyColor;
-            if (sunY > 0.2) skyColor = dayColor;
-            else if (sunY > -0.2) skyColor = sunsetColor.clone().lerp(nightColor, Math.abs(sunY - 0.2) / 0.4);
-            else skyColor = nightColor;
+            // Transition Points:
+            // 0.2 to 1.0 -> Full Day
+            // 0.0 to 0.2 -> Sunrise
+            // -0.2 to 0.0 -> Sunset/Dusk
+            // -1.0 to -0.2 -> Full Night
+            
+            if (sunY > 0.2) {
+                skyColor = dayColor;
+            } else if (sunY > 0) {
+                // Sunrise: Transition from Sunset colors to Day
+                const alpha = sunY / 0.2;
+                skyColor = sunsetColor.clone().lerp(dayColor, alpha);
+            } else if (sunY > -0.2) {
+                // Sunset: Transition from Sunset colors to Pitch Black
+                const alpha = Math.abs(sunY) / 0.2;
+                skyColor = sunsetColor.clone().lerp(nightColor, alpha);
+            } else {
+                // Full Night
+                skyColor = nightColor;
+            }
 
             scene.background = skyColor;
             scene.fog.color = skyColor;
-            hemiLight.intensity = Math.max(0.05, sunY * 0.6);
+            hemiLight.intensity = Math.max(0.02, sunY * 0.6); // Lower base for night
 
             const hours = Math.floor(dayCycle * 24);
             const mins = Math.floor((dayCycle * 24 % 1) * 60);
@@ -654,13 +666,10 @@
             
             if (gameStarted) {
                 updateEnvironment(dt);
-
                 yawObject.position.x += (targetX - yawObject.position.x) * 0.15;
-
                 if (now - lastShotTime > HUD_FADE_DELAY) {
                     document.getElementById('impact-hud').classList.remove('active');
                 }
-
                 const d = weaponData[currentWeaponIndex];
                 if(spacePressed && fireCooldown <= 0) {
                     fire();
